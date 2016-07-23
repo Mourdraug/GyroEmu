@@ -1,0 +1,21 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="org.mordraug.experimental.gyroemu">
+
+    <application
+        android:allowBackup="true"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:supportsRtl="true"
+        android:theme="@style/AppTheme">
+        <meta-data
+            android:name="xposedmodule"
+            android:value="true" />
+        <meta-data
+            android:name="xposeddescription"
+            android:value="Gyroscope emulator basing on accelerometer and magnetic sensor. It's absolutely early attempt, I wouldn't even call it functional as it seems that values provided are wrong." />
+        <meta-data
+            android:name="xposedminversion"
+            android:value="53" />
+    </application>
+
+</manifest>
