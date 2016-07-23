@@ -42,8 +42,8 @@ public class GyroEmu implements IXposedHookLoadPackage {
     private float[] last_acc={0,0,0};
     private float[] last_mag={0,0,0};
     private float[] g_vector = {0,0,0};
-    private float[] rt0 = new float[16];
-    private float[][] gyro_filter = new float[3][15];
+    private float a0,b0,c0;
+    private float[][] accel_filter = new float[3][10];
     private int handle = 81;
     private long last_update=0;
 
@@ -101,7 +101,7 @@ public class GyroEmu implements IXposedHookLoadPackage {
             @Override
             public void onSensorChanged(SensorEvent event) {
                 //Log.e("GyroEmu","acc_val:"+event.values[0]+";"+event.values[1]+";"+event.values[2]);
-                last_acc=event.values;
+                last_acc=roundup(event.values);
                 update(last_acc,last_mag);
             }
 
@@ -124,7 +124,7 @@ public class GyroEmu implements IXposedHookLoadPackage {
 
     }
 
-    //simple average filter.
+    //simple moving average filter.
     public float[] lowpass(float[] input, float[][] filter){
         float[] out = new float[input.length];
         for(int a=0;a<filter.length;a++){
@@ -136,9 +136,7 @@ public class GyroEmu implements IXposedHookLoadPackage {
                 out[a]+=filter[a][b];
             }
             out[a]/=filter[0].length;
-            out[a]=(float)Math.floor(out[a]*10000)/10000f;
         }
-        //Log.e("GyroEmu", Arrays.deepToString(filter));
         return out;
     }
 
@@ -186,30 +184,32 @@ public class GyroEmu implements IXposedHookLoadPackage {
         g_vector[1] = (1-weight)*g_vector[1]+weight*norm_acc[1];
         g_vector[2] = (1-weight)*g_vector[2]+weight*norm_acc[2];
         g_vector=roundup(normalize(g_vector));
-        float[] mag_vector = roundup(normalize(mag_val));
 
-        //Based on: https://github.com/memsindustrygroup/Open-Source-Sensor-Fusion/wiki/Virtual%20Gyro
+        float[] mag_vector = last_mag;
+        float mag_length = length(mag_vector);
+        mag_vector[0]*=1-Math.abs(g_vector[0]);
+        mag_vector[1]*=1-Math.abs(g_vector[1]);
+        mag_vector[2]*=1-Math.abs(g_vector[2]);
+        mag_vector = roundup(normalize(mag_val));
+
+        float[] rt1 = new float[9];
         float[] momentum = new float[3];
-        float[] rt1 = new float[16];
-
         SensorManager.getRotationMatrix(rt1,null,g_vector,mag_vector);
-        if(last_update>0){
-            float[] temp = new float[16];
-            Matrix.multiplyMM(temp,0,rt1,0,rt0,0);
-            double delta_t=(double)(System.nanoTime()-last_update)*0.000000002;
-            momentum[0]=(float)(temp[2]-temp[8]/delta_t);
-            momentum[1]=-(float)(temp[9]-temp[6]/delta_t);
-            momentum[2]=(float)(temp[4]-temp[1]/delta_t);
-            //Log.e("TGyro", ""+delta_t);
-            momentum = roundup(lowpass(momentum,gyro_filter));
-            for(int i=0;i<3;i++){
-                if(Math.abs(momentum[i])<=0.01)
-                    momentum[i]=0;
-                momentum[i]*=1;
-            }
+        float a = (float)Math.atan2(rt1[7],rt1[8]);
+        float b = (float)Math.atan2(rt1[6],Math.sqrt(rt1[7]*rt1[7]+rt1[8]*rt1[8]));
+        float c = (float)Math.atan2(rt1[3],rt1[0]);
+
+        long t = System.currentTimeMillis();
+        if(last_update>0) {
+            double dt = (t - last_update) / 500d;
+            momentum[0] = (float) ((a - a0) / dt);
+            momentum[1] = (float) ((b - b0) / dt);
+            momentum[2] = (float) ((c - c0) / dt);
         }
-        Matrix.transposeM(rt0,0,rt1,0);
-        last_update=System.nanoTime();
+        last_update=t;
+        a0=a;
+        b0=b;
+        c0=c;
 
         //Creating SensorEvent instance and setting its variables, then calling onSensorChanged
         Constructor[] ctors = SensorEvent.class.getDeclaredConstructors();
