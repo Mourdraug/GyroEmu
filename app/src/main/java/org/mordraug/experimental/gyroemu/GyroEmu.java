@@ -41,14 +41,14 @@ public class GyroEmu implements IXposedHookLoadPackage {
     private SensorEventListener gyro_listener;
     private float[] last_acc={0,0,0};
     private float[] last_mag={0,0,0};
-    float[] g_vector = {0,0,0};
+    private float[] g_vector = {0,0,0};
     private float[] rt0 = new float[16];
     private float[][] gyro_filter = new float[3][15];
     private int handle = 81;
     private long last_update=0;
 
     public GyroEmu(){
-        //This try can fail with 5 exceptions, guess your chances.
+        //Creating sensor instance and setting its variables.
         try {
             Class<?> c = Class.forName("android.hardware.Sensor");
             Constructor<?> constructor = c.getDeclaredConstructor();
@@ -96,6 +96,7 @@ public class GyroEmu implements IXposedHookLoadPackage {
             Log.e("GyroEmu", "Error creating virtual Sensor: 06");
         }
 
+        //Accelerometers and Magnetometers Listeners.
         acc_listener = new SensorEventListener() {
             @Override
             public void onSensorChanged(SensorEvent event) {
@@ -123,6 +124,7 @@ public class GyroEmu implements IXposedHookLoadPackage {
 
     }
 
+    //simple average filter.
     public float[] lowpass(float[] input, float[][] filter){
         float[] out = new float[input.length];
         for(int a=0;a<filter.length;a++){
@@ -140,15 +142,17 @@ public class GyroEmu implements IXposedHookLoadPackage {
         return out;
     }
 
+    //vector normalize
     public float[] normalize(float[]vector){
         float[] out = new float[vector.length];
         float length = length(vector);
         for(int i = 0; i<vector.length; i++){
-            out[i]=(float)(vector[i]/length);
+            out[i]=vector[i]/length;
         }
         return out;
     }
 
+    //vector length
     public float length(float[] vector){
         float l = 0;
         for(float f : vector){
@@ -157,6 +161,7 @@ public class GyroEmu implements IXposedHookLoadPackage {
         return (float)Math.sqrt(l);
     }
 
+    //roundup for vectors
     public float[] roundup(float[] input){
         float[] out = new float[input.length];
         for(int i=0; i<input.length;i++){
@@ -165,12 +170,14 @@ public class GyroEmu implements IXposedHookLoadPackage {
         return out;
     }
 
+    //It's actually a truncate
     public float roundup(float input){
         return (float)Math.floor(input*1000)/1000;
     }
 
     public void update(float[] acc_val, float[] mag_val){
 
+        //Some shady algorithm I wrote at 5AM to get nice accelerometer output
         float gravity = 9.85f;
         float weight = Math.abs(1-(length(acc_val))/gravity)*0.9f+0.1f;
         float[] norm_acc = normalize(acc_val);
@@ -181,6 +188,7 @@ public class GyroEmu implements IXposedHookLoadPackage {
         g_vector=roundup(normalize(g_vector));
         float[] mag_vector = roundup(normalize(mag_val));
 
+        //Based on: https://github.com/memsindustrygroup/Open-Source-Sensor-Fusion/wiki/Virtual%20Gyro
         float[] momentum = new float[3];
         float[] rt1 = new float[16];
 
@@ -203,6 +211,7 @@ public class GyroEmu implements IXposedHookLoadPackage {
         Matrix.transposeM(rt0,0,rt1,0);
         last_update=System.nanoTime();
 
+        //Creating SensorEvent instance and setting its variables, then calling onSensorChanged
         Constructor[] ctors = SensorEvent.class.getDeclaredConstructors();
         Constructor ctor = null;
         for (int i = 0; i < ctors.length; i++) {
@@ -228,6 +237,7 @@ public class GyroEmu implements IXposedHookLoadPackage {
 
     }
 
+    //Bewaaare the HOOKS
     public void handleLoadPackage(XC_LoadPackage.LoadPackageParam lpparam) throws Throwable {
         try {
             final Class<?> sensorEQ = findClass(
@@ -272,7 +282,7 @@ public class GyroEmu implements IXposedHookLoadPackage {
                                 Throwable {
                             if(((Sensor)param.args[1]).getType()==Sensor.TYPE_GYROSCOPE||((Sensor)param.args[1]).getType()==Sensor.TYPE_GYROSCOPE_UNCALIBRATED){
                                 gyro_listener = (SensorEventListener)param.args[0];
-                                param.setResult((Object)true);
+                                param.setResult(true);
                                 ((SensorManager)param.thisObject).registerListener(mag_listener, ((SensorManager)param.thisObject).getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD), (int)param.args[2]);
                                 ((SensorManager)param.thisObject).registerListener(acc_listener, ((SensorManager)param.thisObject).getDefaultSensor(Sensor.TYPE_ACCELEROMETER), (int)param.args[2]);
                             }
